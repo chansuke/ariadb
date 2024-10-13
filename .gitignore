@@ -1,0 +1,12 @@
+# Ignore build artifacts
+.zig-cache/
+zig-out/
+
+# Ignore binary outputs
+*.o
+*.exe
+*.obj
+*.dll
+*.so
+*.dylib
+*.a
