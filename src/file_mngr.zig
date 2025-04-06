@@ -14,21 +14,19 @@ pub const FileMgr = struct {
     // Initialize FileMgr with a directory path
     pub fn init(allocator: std.mem.Allocator, path: []const u8, blocksize_param: i64) FileMgr {
         // Attempt to open the directory to check if it exists
-        //var dir_result = std.fs.cwd().openDir(path, .{});
+        var is_new_param: bool = false;
         var dir: std.fs.Dir = undefined;
 
-        // Check if the directory exists
-        var is_new_param: bool = false;
-        switch (std.fs.cwd().openDir(path, .{})) {
+        const open_result = std.fs.cwd().openDir(path, .{});
+        switch (open_result) {
             error.FileNotFound => {
-                // If the directory does not exist, set is_new to true and create the directory
+                // Handle the FileNotFound error:
                 is_new_param = true;
                 try std.fs.cwd().makeDir(path);
-                // Open the newly created directory
                 dir = try std.fs.cwd().openDir(path, .{});
             },
-            // If the directory exists, assign it to dir
             else => |opened_dir| {
+                // When no error, use the opened directory.
                 dir = opened_dir;
             },
         }
