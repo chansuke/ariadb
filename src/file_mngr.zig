@@ -12,23 +12,25 @@ pub const FileMgr = struct {
     const Self = @This();
 
     // Initialize FileMgr with a directory path
-    pub fn init(allocator: std.mem.Allocator, path: []const u8, blocksize_param: i64) FileMgr {
+    pub fn init(allocator: std.mem.Allocator, path: []const u8, blocksize_param: i64) !FileMgr {
         // Attempt to open the directory to check if it exists
         var is_new_param: bool = false;
         var dir: std.fs.Dir = undefined;
 
         const open_result = std.fs.cwd().openDir(path, .{});
-        switch (open_result) {
-            error.FileNotFound => {
+        if (open_result) |opened_dir| {
+            // When no error, use the opened directory.
+            dir = opened_dir;
+        } else |err| {
+            if (err == error.FileNotFound) {
                 // Handle the FileNotFound error:
                 is_new_param = true;
                 try std.fs.cwd().makeDir(path);
                 dir = try std.fs.cwd().openDir(path, .{});
-            },
-            else => |opened_dir| {
-                // When no error, use the opened directory.
-                dir = opened_dir;
-            },
+            } else {
+                // Propagate other errors
+                return err;
+            }
         }
 
         // Initialize the HashMap for open files
