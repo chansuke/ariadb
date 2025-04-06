@@ -88,7 +88,7 @@ pub const FileMgr = struct {
         try file.seekTo(position);
 
         // Read the file data into the page's contents
-        try file.readAll(page.contents());
+        _ = try file.readAll(page.contents());
     }
 
     // Read data from a file into a page
