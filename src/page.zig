@@ -7,7 +7,7 @@ pub const Page = struct {
     const CHARSET = std.encoding.utf8;
 
     // Create data buffers.
-    pub fn initWithSize(allocator: *std.mem.Allocator, size: usize) !Page {
+    pub fn initWithSize(allocator: std.mem.Allocator, size: usize) !Page {
         const buffer = try allocator.alloc(u8, size);
         return Page{ .bb = buffer };
     }
@@ -51,12 +51,12 @@ pub const Page = struct {
         if (offset + lengthSize + buffer.len > self.bb.len) {
             return error.OutOfBounds;
         }
+        const byteLength: i32 = @intCast(buffer.len);
+        std.mem.writeInt(i32, self.bb[offset .. offset + lengthSize], byteLength, .little);
 
-        const byteLength = @as(usize, @intCast(buffer.len));
-        std.mem.copy(u8, self.bb[offset .. offset + lengthSize], byteLength);
         // Copy the actual bytes into the buffer after the length
         const start = offset + lengthSize;
-        std.mem.copy(u8, self.bb[start .. start + buffer.len], buffer);
+        std.mem.copyForwards(u8, self.bb[start .. start + buffer.len], buffer);
     }
 
     pub fn getString(self: *Page, offset: usize) ![]const u8 {
