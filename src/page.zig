@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const Page = struct {
+pub const Page = struct {
     // slice to represent the buffer.
     bb: []u8,
 
