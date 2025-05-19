@@ -34,7 +34,7 @@ pub const FileMgr = struct {
         }
 
         // Initialize the HashMap for open files
-        const openfiles = std.HashMap([]const u8, std.fs.File).init(allocator);
+        const openfiles = std.AutoHashMap([]const u8, std.fs.File).init(allocator);
 
         // If the directory is new, clean up temporary files
         if (is_new_param) {
