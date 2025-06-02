@@ -12,6 +12,7 @@ test "test file manager" {
     const block_size = 400;
 
     var fm = try FileMgr.init(allocator, db, block_size);
+    defer fm.deinit();
     const testfile: []const u8 = "testfile";
     const blk = try BlockId.init(testfile, 2);
 
@@ -23,6 +24,7 @@ test "test file manager" {
     }
     const fm_block_size_usize: usize = @intCast(fm_block_size);
     var p1 = try Page.initWithSize(allocator, fm_block_size_usize);
+    defer p1.deinit(allocator);
 
     try p1.setString(pos1, "abcdefghijklm");
 
@@ -34,6 +36,7 @@ test "test file manager" {
 
     // Use the same fm_block_size_usize for p2.
     var p2 = try Page.initWithSize(allocator, fm_block_size_usize);
+    defer p2.deinit(allocator);
     try fm.read(blk, &p2);
 
     try std.testing.expectEqualStrings(try p2.getString(pos1), "abcdefghijklm");

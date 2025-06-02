@@ -7,7 +7,7 @@ pub const FileMgr = struct {
     db_directory: std.fs.Dir,
     blocksize: i64,
     is_new: bool,
-    openfiles: std.AutoHashMap([]const u8, std.fs.File),
+    openfiles: std.StringHashMap(std.fs.File),
 
     const Self = @This();
 
@@ -34,7 +34,7 @@ pub const FileMgr = struct {
         }
 
         // Initialize the HashMap for open files
-        const openfiles = std.AutoHashMap([]const u8, std.fs.File).init(allocator);
+        const openfiles = std.StringHashMap(std.fs.File).init(allocator);
 
         // If the directory is new, clean up temporary files
         if (is_new_param) {
@@ -68,7 +68,7 @@ pub const FileMgr = struct {
         // Close all open files and deinitialize the map
         var it = self.openfiles.iterator();
         while (it.next()) |entry| {
-            entry.value.close(); // Close each file handle
+            entry.value_ptr.*.close(); // Close each file handle
         }
         self.openfiles.deinit();
         self.db_directory.close(); // Close the directory handle
@@ -153,12 +153,21 @@ pub const FileMgr = struct {
         if (self.openfiles.get(filename)) |file| {
             return file;
         } else {
-            // https://ziglang.org/documentation/master/std/#std.fs.File.OpenFlags
-            // https://ziglang.org/documentation/master/std/#std.fs.File.OpenMode
-            const file = try self.db_directory.openFile(filename, .{
+            // Try to open the file, create it if it doesn't exist
+            const file = self.db_directory.openFile(filename, .{
                 .mode = .read_write,
                 .lock = .none,
-            });
+            }) catch |err| {
+                if (err == error.FileNotFound) {
+                    // Create the file if it doesn't exist
+                    return try self.db_directory.createFile(filename, .{
+                        .read = true,
+                        .truncate = false,
+                    });
+                } else {
+                    return err;
+                }
+            };
             try self.openfiles.put(filename, file);
             return file;
         }
