@@ -3,38 +3,38 @@ const std = @import("std");
 const BlockId = @import("block_id.zig").BlockId;
 const Page = @import("page.zig").Page;
 
-const FileMgr = struct {
+pub const FileMgr = struct {
     db_directory: std.fs.Dir,
     blocksize: i64,
     is_new: bool,
-    openfiles: std.HashMap([]const u8, std.fs.File),
+    openfiles: std.StringHashMap(std.fs.File),
 
     const Self = @This();
 
     // Initialize FileMgr with a directory path
-    pub fn init(allocator: *std.mem.Allocator, path: []const u8, blocksize_param: i64) !Self {
+    pub fn init(allocator: std.mem.Allocator, path: []const u8, blocksize_param: i64) !FileMgr {
         // Attempt to open the directory to check if it exists
-        //var dir_result = std.fs.cwd().openDir(path, .{});
+        var is_new_param: bool = false;
         var dir: std.fs.Dir = undefined;
 
-        // Check if the directory exists
-        var is_new_param: bool = false;
-        switch (std.fs.cwd().openDir(path, .{})) {
-            error.FileNotFound => {
-                // If the directory does not exist, set is_new to true and create the directory
+        const open_result = std.fs.cwd().openDir(path, .{});
+        if (open_result) |opened_dir| {
+            // When no error, use the opened directory.
+            dir = opened_dir;
+        } else |err| {
+            if (err == error.FileNotFound) {
+                // Handle the FileNotFound error:
                 is_new_param = true;
                 try std.fs.cwd().makeDir(path);
-                // Open the newly created directory
                 dir = try std.fs.cwd().openDir(path, .{});
-            },
-            // If the directory exists, assign it to dir
-            else => |opened_dir| {
-                dir = opened_dir;
-            },
+            } else {
+                // Propagate other errors
+                return err;
+            }
         }
 
         // Initialize the HashMap for open files
-        const openfiles = std.HashMap([]const u8, std.fs.File).init(allocator);
+        const openfiles = std.StringHashMap(std.fs.File).init(allocator);
 
         // If the directory is new, clean up temporary files
         if (is_new_param) {
@@ -55,7 +55,7 @@ const FileMgr = struct {
         }
 
         // Return the initialized FileMgr struct
-        return Self{
+        return FileMgr{
             .db_directory = dir,
             .blocksize = blocksize_param,
             .is_new = is_new_param,
@@ -68,7 +68,7 @@ const FileMgr = struct {
         // Close all open files and deinitialize the map
         var it = self.openfiles.iterator();
         while (it.next()) |entry| {
-            entry.value.close(); // Close each file handle
+            entry.value_ptr.*.close(); // Close each file handle
         }
         self.openfiles.deinit();
         self.db_directory.close(); // Close the directory handle
@@ -77,28 +77,32 @@ const FileMgr = struct {
     // Read data from a file into a page
     pub fn read(self: *Self, block: BlockId, page: *Page) !void {
         // Get the file associated with the block's filename
-        const file = try self.getFile(page.allocator, block.filename());
+        const file = try self.getFile(block.filename);
 
         // Calculate the seek position based on the block number and block size
-        const position = @as(i64, @intCast(block.number())) * self.blocksize;
+        const converted_block_num: u64 = @intCast(block.number());
+        const converted_block_size: u64 = @intCast(self.blocksize);
+        const position = converted_block_num * converted_block_size;
 
         // Seek to the correct position in the file
-        try file.seek(position, std.fs.File.Seek.Origin.Start);
+        try file.seekTo(position);
 
         // Read the file data into the page's contents
-        try file.readAll(page.contents());
+        _ = try file.readAll(page.contents());
     }
 
     // Read data from a file into a page
     pub fn write(self: *Self, block: BlockId, page: *Page) !void {
         // Get the file associated with the block's filename
-        const file = try self.getFile(page.allocator, block.filename());
+        const file = try self.getFile(block.filename);
 
         // Calculate the seek position based on the block number and block size
-        const position = @as(i64, @intCast(block.number())) * self.blocksize;
+        const converted_block_num: u64 = @intCast(block.number());
+        const converted_block_size: u64 = @intCast(self.blocksize);
+        const position = converted_block_num * converted_block_size;
 
         // Seek to the correct position in the file
-        try file.seek(position, std.fs.File.Seek.Origin.Start);
+        try file.seekTo(position);
 
         // Read the file data into the page's contents
         try file.writeAll(page.contents());
@@ -136,11 +140,11 @@ const FileMgr = struct {
         return file.length() / self.blocksize;
     }
 
-    pub fn is_new(self: *Self) bool {
+    pub fn get_is_new(self: *Self) bool {
         return self.is_new;
     }
 
-    pub fn blocksize(self: *Self) i64 {
+    pub fn get_blocksize(self: *Self) i64 {
         return self.blocksize;
     }
 
@@ -149,7 +153,21 @@ const FileMgr = struct {
         if (self.openfiles.get(filename)) |file| {
             return file;
         } else {
-            const file = try self.db_directory.openFile(filename, .{ .read = true, .write = true });
+            // Try to open the file, create it if it doesn't exist
+            const file = self.db_directory.openFile(filename, .{
+                .mode = .read_write,
+                .lock = .none,
+            }) catch |err| {
+                if (err == error.FileNotFound) {
+                    // Create the file if it doesn't exist
+                    return try self.db_directory.createFile(filename, .{
+                        .read = true,
+                        .truncate = false,
+                    });
+                } else {
+                    return err;
+                }
+            };
             try self.openfiles.put(filename, file);
             return file;
         }

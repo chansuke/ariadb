@@ -1,15 +1,20 @@
 const std = @import("std");
 
-const Page = struct {
+pub const Page = struct {
     // slice to represent the buffer.
     bb: []u8,
 
     const CHARSET = std.encoding.utf8;
 
     // Create data buffers.
-    pub fn initWithSize(allocator: *std.mem.Allocator, size: usize) !Page {
+    pub fn initWithSize(allocator: std.mem.Allocator, size: usize) !Page {
         const buffer = try allocator.alloc(u8, size);
         return Page{ .bb = buffer };
+    }
+
+    // Clean up allocated memory
+    pub fn deinit(self: *Page, allocator: std.mem.Allocator) void {
+        allocator.free(self.bb);
     }
 
     // Create log pages.
@@ -22,11 +27,14 @@ const Page = struct {
             return error.OutOfBounds;
         }
 
-        return self.bb[offset];
+        return std.mem.readInt(i64, self.bb[offset..offset + @sizeOf(i64)][0..@sizeOf(i64)], .little);
     }
 
-    pub fn setInt(self: *Page, offset: usize, n: i64) !i64 {
-        self.bb[offset] = n;
+    pub fn setInt(self: *Page, offset: usize, n: i64) !void {
+        if (offset + @sizeOf(i64) > self.bb.len) {
+            return error.OutOfBounds;
+        }
+        std.mem.writeInt(i64, self.bb[offset..offset + @sizeOf(i64)][0..@sizeOf(i64)], n, .little);
     }
 
     pub fn getBytes(self: *Page, offset: usize) ![]u8 {
@@ -34,7 +42,7 @@ const Page = struct {
             return error.OutOfBounds;
         }
 
-        const length = std.mem.readInt(i32, self.bb[offset .. offset + @sizeOf(i32)], .little);
+        const length = std.mem.readInt(i32, self.bb[offset..offset + @sizeOf(i32)][0..@sizeOf(i32)], .little);
         // @as(i32, @intCast(i));
         const byteLength = @as(usize, @intCast(length));
 
@@ -51,12 +59,12 @@ const Page = struct {
         if (offset + lengthSize + buffer.len > self.bb.len) {
             return error.OutOfBounds;
         }
+        const byteLength: i32 = @intCast(buffer.len);
+        std.mem.writeInt(i32, self.bb[offset..offset + lengthSize][0..lengthSize], byteLength, .little);
 
-        const byteLength = @as(usize, @intCast(buffer.len));
-        std.mem.copy(u8, self.bb[offset .. offset + lengthSize], byteLength);
         // Copy the actual bytes into the buffer after the length
         const start = offset + lengthSize;
-        std.mem.copy(u8, self.bb[start .. start + buffer.len], buffer);
+        std.mem.copyForwards(u8, self.bb[start .. start + buffer.len], buffer);
     }
 
     pub fn getString(self: *Page, offset: usize) ![]const u8 {
@@ -64,7 +72,7 @@ const Page = struct {
         const buffer = try self.getBytes(offset);
 
         // Convert the byte slice to a string slice
-        if (!std.unicode.utf8Validate(buffer)) {
+        if (!std.unicode.utf8ValidateSlice(buffer)) {
             return error.InvalidUTF8;
         }
 
@@ -75,19 +83,17 @@ const Page = struct {
         return self.setBytes(offset, s);
     }
 
-    pub fn maxLength(strlen: usize) u32 {
-        // Maximum bytes per character in UTF-8.
-        const bytesPerChar: f32 = 4.0;
-
-        // Size of an integer in bytes.
+    pub fn maxLength(self: *Page, strlen: usize) u32 {
+        _ = self;
+        // Size of an integer in bytes for length prefix
         const integerBytes: u32 = @sizeOf(i32);
 
-        // Calculate the max length based on input string length and bytes per character.
-        const result = integerBytes + @as(u32, @intCast(strlen)) + @as(u32, @intCast(bytesPerChar));
+        // Calculate the max length based on input string length
+        const result = integerBytes + @as(u32, @intCast(strlen));
         return result;
     }
 
-    fn contents(self: *Page) []u8 {
+    pub fn contents(self: *Page) []u8 {
         // Return the whole buffer starting at position 0.
         return self.bb;
     }

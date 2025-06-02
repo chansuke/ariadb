@@ -1,10 +1,20 @@
 const std = @import("std");
 
-const BlockId = struct {
-    filename: []u8,
+pub const BlockId = struct {
+    filename: []const u8,
     block_num: u32,
 
-    pub fn filename(self: BlockId) []u8 {
+    const Self = @This();
+
+    // Initialize BlockId with fileName and block number
+    pub fn init(name: []const u8, block_num: u32) !Self {
+        return Self{
+            .filename = name,
+            .block_num = block_num,
+        };
+    }
+
+    pub fn getFilename(self: BlockId) []u8 {
         return self.filename;
     }
 
